@@ -10,7 +10,7 @@ This repository contains the code for runinng MOC applied to SLOT. You can curre
 <br>
 
 **Clone repo and cd to root directory**
-- <code>git clone </code> <br>
+- <code>git clone https://github.com/Guillem-123/ox4rl_slot_attention.git </code> <br>
 - <code>cd ox4rl_slot_attention</code>
 
 <br>
