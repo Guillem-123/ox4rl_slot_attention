@@ -1,0 +1,154 @@
+FROM docker.io/nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu20.04 AS base
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PATH="/usr/local/cuda/bin:${PATH}"
+ENV LD_LIBRARY_PATH="/usr/local/cuda/lib64:${LD_LIBRARY_PATH}"
+
+# Create app directory
+WORKDIR /app
+
+# Install Python and system dependencies
+RUN apt-get update && apt-get install -y \
+    python3.9 \
+    python3-pip \
+    python3.9-dev \
+    build-essential \
+    git \
+    wget \
+    ffmpeg \
+    libsm6 \
+    libxext6 \
+    libgl1-mesa-glx \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set Python 3.9 as default
+RUN ln -sf /usr/bin/python3.9 /usr/bin/python && \
+    ln -sf /usr/bin/pip3 /usr/bin/pip
+
+# Ensure pip is properly associated with Python 3.9
+RUN python -m pip install --upgrade pip setuptools wheel
+
+# Debug: Check which Python and pip are being used
+RUN which python && python --version && \
+    which pip && pip --version && \
+    python -c "import sys; print('Python path:', sys.executable)"
+
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+RUN python -m pip install --no-cache-dir -r requirements.txt
+COPY requirements_colab.txt .
+RUN python -m pip install --no-cache-dir -r requirements_colab.txt
+
+# Install PyTorch with CUDA support
+RUN python -m pip install torch==2.4.1+cu118 torchvision --index-url https://download.pytorch.org/whl/cu118
+RUN python -m pip install torchmetrics==1.5.2
+
+# Copy the entire project
+COPY . /app/
+
+# Install the package in development mode from the root directory
+WORKDIR /app
+RUN python -m pip install -e .
+
+# Patch path in OCAtari script to use correct directory
+RUN sed -i "s|Path('..','aiml_atari_data')|Path('aiml_atari_data')|g" /app/ox4rl/dataset_creation/create_dataset_using_OCAtari.py
+
+# Create all necessary data directories
+RUN mkdir -p ./aiml_atari_data/Pong-v4/latents/{train,validation,test} \
+    ./aiml_atari_data/Pong-v4/latents_slot/{train,validation,test} \
+    ./aiml_atari_data/Pong-v4/motion/{train,validation,test} \
+    ./aiml_atari_data/Pong-v4/space_like/{train,validation,test} \
+    ./aiml_atari_data/Pong-v4/images/{train,validation,test} \
+    ./aiml_atari_data/Pong-v4/mode/{train,validation,test}
+
+# Create output directories for logs and checkpoints
+RUN mkdir -p /app/output/logs/final \
+    /app/output/checkpoints/final \
+    /app/output/eval
+
+# Debug: Check Python environment before running the script
+RUN which python && python --version && \
+    which pip && pip --version && \
+    python -c "import sys; print('Python executable:', sys.executable)" && \
+    python -c "import sys; print('Python path:', sys.path)" && \
+    python -m pip list | grep torch
+
+# create placeholder latent files
+RUN sed -i 's/cfg.device = .*/cfg.device = "cpu"/' create_latents.py && \
+    python create_latents.py
+
+# Set working directory to ox4rl subdirectory for running commands
+# WORKDIR /app/ox4rl
+
+# Create a CPU-specific config for build time
+RUN cp ./ox4rl/configs/slot_atari_pong.yaml ./ox4rl/configs/slot_atari_pong_cpu.yaml && \
+    sed -i "s/device: 'cuda:0'/device: 'cpu'/g" ./ox4rl/configs/slot_atari_pong_cpu.yaml && \
+    cat ./ox4rl/configs/slot_atari_pong_cpu.yaml | grep device
+
+# Create latent dataset slot for different modes
+# TODO: do we only need val?
+RUN python -m ox4rl.dataset_creation.create_latent_dataset_slot_placeholder --config_file ./ox4rl/configs/slot_atari_pong_cpu.yaml --dataset_mode train && \
+    python -m ox4rl.dataset_creation.create_latent_dataset_slot_placeholder --config_file ./ox4rl/configs/slot_atari_pong_cpu.yaml --dataset_mode validation && \
+    python -m ox4rl.dataset_creation.create_latent_dataset_slot_placeholder --config_file ./ox4rl/configs/slot_atari_pong_cpu.yaml --dataset_mode test
+
+# Create datasets using OCAtari
+## compute root images
+RUN python -m ox4rl.dataset_creation.create_dataset_using_OCAtari -f train -m SPACE -g Pong --compute_root_images && \
+    python -m ox4rl.dataset_creation.create_dataset_using_OCAtari -f validation -m SPACE -g Pong --compute_root_images && \
+    python -m ox4rl.dataset_creation.create_dataset_using_OCAtari -f test -m SPACE -g Pong --compute_root_images
+
+## create dataset using root images
+RUN python -m ox4rl.dataset_creation.create_dataset_using_OCAtari -f train -m SPACE -g Pong && \
+    python -m ox4rl.dataset_creation.create_dataset_using_OCAtari -f validation -m SPACE -g Pong && \
+    python -m ox4rl.dataset_creation.create_dataset_using_OCAtari -f test -m SPACE -g Pong
+
+# Debug: Check directories and file counts
+RUN echo "===== DEBUGGING DIRECTORY CONTENTS =====" && \
+    echo "SPACE_LIKE FILES:" && ls -la ./aiml_atari_data/Pong-v4/space_like/train/ | wc -l && \
+    echo "MODE FILES:" && ls -la ./aiml_atari_data/Pong-v4/mode/train/ | wc -l && \
+    echo "SAMPLE FILES:" && ls -la ./aiml_atari_data/Pong-v4/space_like/train/00000_0.png 2>/dev/null || echo "NO SAMPLE FILES FOUND" && \
+    echo "======================================="
+
+# Create symbolic link from mode to motion directory
+RUN ln -s /app/aiml_atari_data/Pong-v4/mode /app/aiml_atari_data/Pong-v4/motion
+
+# Patch create_motion_for_slot_old.py to use the right keys
+RUN sed -i 's/return_keys=\["imgs", "motion_slot"\]/return_keys=\["imgs", "motion"\]/g' /app/ox4rl/execution_scripts/create_motion_for_slot_old.py
+
+# Create motion for slot for different modes
+RUN python -m ox4rl.execution_scripts.create_motion_for_slot_old --config_file ./ox4rl/configs/slot_atari_pong_cpu.yaml --dataset_mode train && \
+    python -m ox4rl.execution_scripts.create_motion_for_slot_old --config_file ./ox4rl/configs/slot_atari_pong_cpu.yaml --dataset_mode validation && \
+    python -m ox4rl.execution_scripts.create_motion_for_slot_old --config_file ./ox4rl/configs/slot_atari_pong_cpu.yaml --dataset_mode test
+
+# Create a directory for model output
+# RUN mkdir -p /app/models
+
+# Patch the trainSlotAtari.py script to use 'validation' instead of 'val'
+RUN sed -i "s/Atari_Z_What(cfg, 'val', boxes_subset/Atari_Z_What(cfg, 'validation', boxes_subset/g" /app/ox4rl/execution_scripts/trainSlotAtari.py && \
+    sed -i "s/get_dataloader(cfg, 'val', val_set)/get_dataloader(cfg, 'validation', val_set)/g" /app/ox4rl/execution_scripts/trainSlotAtari.py
+
+# Set the Python module as the entrypoint
+WORKDIR /app
+
+# Training image
+FROM base AS trainer
+ENTRYPOINT ["python", "-m", "ox4rl.execution_scripts.trainSlotAtari", "--config_file", "./ox4rl/configs/slot_atari_pong.yaml"]
+CMD []
+
+# Visualization image
+FROM base AS visualizer
+
+# Patch create_latent_dataset_slot.py to load models on CPU
+RUN sed -i 's/checkpoint=torch.load(checkpoint_path)/checkpoint=torch.load(checkpoint_path, map_location=torch.device("cpu"))/g' /app/ox4rl/dataset_creation/create_latent_dataset_slot.py
+
+# Create latent dataset slot for different modes
+# TODO: do we only need val?
+RUN python -m ox4rl.dataset_creation.create_latent_dataset_slot --config_file ./ox4rl/configs/slot_atari_pong_cpu.yaml --dataset_mode train && \
+    python -m ox4rl.dataset_creation.create_latent_dataset_slot --config_file ./ox4rl/configs/slot_atari_pong_cpu.yaml --dataset_mode validation && \
+    python -m ox4rl.dataset_creation.create_latent_dataset_slot --config_file ./ox4rl/configs/slot_atari_pong_cpu.yaml --dataset_mode test
+
+ENTRYPOINT ["python", "-m", "ox4rl.utility_scripts.script_generate_visualizations"]
+CMD [] 

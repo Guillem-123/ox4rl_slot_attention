@@ -1,0 +1,63 @@
+seed: 1
+model: 'slot'
+exp_name: pong
+resume: false
+#load_time_consistency: true
+#add_flow: true
+save_relevant_objects: false
+resume_ckpt: '../output/checkpoints/pong/pong_samoc_s0_100_final.ckpt'
+parallel: true
+device_ids: [0, 1, 2, 3]
+device: 'cuda:0'
+resolution: (128, 128)
+
+logdir: '../output/logs/final'
+checkpointdir: '../output/checkpoints/final'
+evaldir: '../output/eval'
+
+dataset: 'ATARI' # 'ATARI-Mask'
+dataset_style: ''
+dataset_roots:
+  OBJ3D_SMALL: '../data/OBJ3D_SMALL'
+  OBJ3D_LARGE: '../data/OBJ3D_LARGE'
+  ATARI: '/workspace/datasets-local/MOC'
+
+train:
+  log: true
+  batch_size: 18
+  max_epochs: 50
+  max_steps: 5000
+  print_every: 200
+  save_every: 200
+#  num_workers: 8
+  num_workers: 0
+  warmup_steps: 10000
+  decay_rate: 0.5
+  decay_steps: 100000
+  weight_mask: 1.0
+  weight_oc: 1.0
+  weight_temporal: 0.0
+  clip_norm: 1.0
+  max_ckpt: 4
+  eval_on: true
+  eval_every: 200
+
+
+  solver:
+    slot:
+      optim: 'Adam'
+      lr: 1e-4
+    fg:
+      optim: 'RMSprop'
+      lr: 3e-5
+    bg:
+      optim: 'Adam'
+      lr: 1e-3
+
+arch_slot:
+  num_slots: 10
+  hid_dim: 64
+
+gamelist: [
+    'Pong-v0',
+    ]
