@@ -7,6 +7,14 @@ This repository contains the code for runinng MOC applied to SLOT. You can curre
   - Jupyter Notebook
 - Trained model weights
 
+<br>
+
+**Clone repo and cd to root directory**
+- <code>git clone </code> <br>
+- <code>cd ox4rl_slot_attention</code>
+
+<br>
+<br>
 
 **Options for running the code**
 
