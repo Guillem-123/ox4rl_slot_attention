@@ -1,50 +1,53 @@
-# Slot+MOC:
-This repository contains the code for runinng MOC applied to SLOT. You can currently train and visualize bounding boxes for object detection in Pong.
+# Slot+MOC
 
-**Sections**
-- Options for running the code
-  - Dockerfile (recommended)
-  - Jupyter Notebook
-- Trained model weights
+This repository contains the code for running MOC applied to SLOT. You can currently train and visualize bounding boxes for object detection in Pong.
 
-<br>
+## Getting Started
 
-**Clone repo and cd to root directory**
-- <code>git clone https://github.com/Guillem-123/ox4rl_slot_attention.git </code> <br>
-- <code>cd ox4rl_slot_attention</code>
+### Clone Repository
 
-<br>
-<br>
+```bash
+git clone https://github.com/Guillem-123/ox4rl_slot_attention.git
+cd ox4rl_slot_attention
+```
 
-**Options for running the code**
+## Running Options
 
-*Dockerfile*
+### Docker (Recommended)
 
-We have two docker images one for training and another one for visualization.
-You can either use train as the target or visualize, depending on whether you want to train the model from scratch or use our pretrained version to visualize bounding boxes.<br>
- The first commands are for building the images  <br>
+We have two Docker images: one for training and another for visualization.
 
-```docker build -t ox4rl-slot-trainer --target trainer -f Dockerfile-slot .``` <br>
-```docker build -t ox4rl-slot-visualizer --target visualizer -f Dockerfile-slot .``` <br>
+#### 1. Build Docker Images
 
-Before running the containers the following folders need to be generated.
+```bash
+# For training
+docker build -t ox4rl-slot-trainer --target trainer -f Dockerfile-slot .
 
-<code>mkdir -p visualizations/slot <br>
+# For visualization
+docker build -t ox4rl-slot-visualizer --target visualizer -f Dockerfile-slot .
+```
+
+#### 2. Create Required Directories
+
+```bash
+mkdir -p visualizations/slot
 mkdir -p output/runs
-</code>
+```
 
-And the second set of command are for running the containers. <br>
+#### 3. Run Containers
 
-<code>
+For training:
+```bash
 docker run --gpus all \
   -v $(pwd)/output/runs:/app/runs \
   --name slot_training \
   --rm \
   ox4rl-slot-trainer \
   --exp_name slot
-</code> <br>
+```
 
-<code>
+For visualization:
+```bash
 docker run --gpus all \
   -v $(pwd)/output/runs:/app/runs \
   -v $(pwd)/visualizations/slot:/app/visualizations/slot \
@@ -52,23 +55,22 @@ docker run --gpus all \
   --rm \
   ox4rl-slot-visualizer \
   --exp_name slot
-</code>
-<br>
-<br>
+```
 
-*Jupyter Notebook*
+### Jupyter Notebook
 
-You can find a Notebook named Slot_MOC_Pong which you can follow to create a conda env with the required dependencies and run the code to train and visualize the model. However, we recommend using the docker approach as the paths in the Jupyter Notebook are not up to date. 
+You can find a notebook named `Slot_MOC_Pong` which guides you through creating a conda environment with the required dependencies and running the code to train and visualize the model. 
 
+> **Note:** We recommend using the Docker approach as the paths in the Jupyter Notebook are not up to date.
 
-**Trained model weights**
+## Pretrained Model Weights
 
-Find the already trained model weights at
+Trained model weights are available in the following structure:
+
 ```
 ox4rl
 ├── epoch_1000_final.ckpt
 ├── ox4rl
 ```
 
-
-Please consider that the model has only been trained on Pong.
+Please note that the model has only been trained on Pong.
